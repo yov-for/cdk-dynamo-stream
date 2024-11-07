@@ -5,16 +5,20 @@ import { AttributeType, BillingMode, StreamViewType, Table, TableClass } from 'a
 import { Code, FilterCriteria, FilterRule, Function, Runtime, StartingPosition } from 'aws-cdk-lib/aws-lambda';
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
+import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
+interface LambdaDynamoDBS3RoleStackProps extends cdk.StackProps {
+  s3BucketArn: string;           // ARN of the S3 bucket in the other account
+  s3BucketAccountId: string;     // Account ID for the S3 bucket
+}
+
 export class CdkDynamodbStreamStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: LambdaDynamoDBS3RoleStackProps) {
     super(scope, id, props);
 
-    // The code that defines your stack goes here
-
     const myTable = new Table(this, 'test-table', {
-      tableName: 'my-test-table',
+      tableName: 'TABLE_NAME',
       partitionKey: { name: 'tc_date', type: AttributeType.STRING },
       tableClass: TableClass.STANDARD_INFREQUENT_ACCESS,
       billingMode: BillingMode.PAY_PER_REQUEST,
@@ -22,20 +26,13 @@ export class CdkDynamodbStreamStack extends cdk.Stack {
       deletionProtection: false
     });
 
-    const s3Destiny = new Bucket(this, 's3Destiny', {
-      bucketName: 's3destiny',
-      encryption: BucketEncryption.S3_MANAGED,
-      autoDeleteObjects: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY      
-    })
-
     const fnNewItemHandler = new Function(this, 'fnNewItemHandler', {
       functionName: 'fnNewItemHandler',
       runtime: Runtime.PYTHON_3_12,
-      code: Code.fromAsset('lambda'),
-      handler: 'new-item-handler.handler',
+      code: Code.fromAsset('lambda/new-item_handler'),
+      handler: 'main.handler',
       environment: {
-        'BUCKET_TARGET': s3Destiny.bucketName
+        'BUCKET_TARGET': 'BUCKET_TARGET'
       }
     });
 
@@ -43,14 +40,26 @@ export class CdkDynamodbStreamStack extends cdk.Stack {
       startingPosition: StartingPosition.LATEST,
       filters: [FilterCriteria.filter({ eventName: FilterRule.isEqual('INSERT') })],
       batchSize: 1
-    }))
+    }));
+    
+    const lambdaRole = new Role(this, 'LambdaDynamoDBS3Role', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+    });
 
+    const dynamoStreamPolicy = new PolicyStatement({
+      effect: Effect.ALLOW,
+      actions: ['dynamodb:DescribeStream', 'dynamodb:GetRecords', 'dynamodb:GetShardIterator', 'dynamodb:ListStreams'],
+      resources: [myTable.tableStreamArn!],
+    });
 
+    const s3Policy = new PolicyStatement({
+      effect: Effect.ALLOW,
+      actions: ['s3:PutObject', 's3:PutObjectAcl'],
+      resources: [`${props.s3BucketArn}/*`],
+    });
 
-    s3Destiny.grantReadWrite(fnNewItemHandler)
-    // example resource
-    // const queue = new sqs.Queue(this, 'CdkDynamodbStreamQueue', {
-    //   visibilityTimeout: cdk.Duration.seconds(300)
-    // });
+    fnNewItemHandler.addToRolePolicy(dynamoStreamPolicy);
+    fnNewItemHandler.addToRolePolicy(s3Policy);
+
   }
 }
