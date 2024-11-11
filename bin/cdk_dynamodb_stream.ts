@@ -15,7 +15,10 @@ new CdkDynamodbStreamStack(app, 'CdkDynamodbStreamStack', {
 
   /* Uncomment the next line if you know exactly what Account and Region you
    * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
-
+  env: { account: '767397775250', region: 'us-east-1' },
+  environment: 'develop',
+  crossAccountBucketName: 'develop-datalake-raw-767397775250',
+  crossAccountId: '767397775250',
+  RoleName: ''
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
