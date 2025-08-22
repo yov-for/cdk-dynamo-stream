@@ -70,7 +70,7 @@ def lambda_handler(event, context):
 
     # Validate if date was already requested
     tc_contable = None
-    
+    print('hello')
     # In case it is sunday, set null, no need to scrap the web
     if date2search_iteration.weekday() == 6:
         write2ddb(date2search, 0)
