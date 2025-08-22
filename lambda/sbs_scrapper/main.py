@@ -21,7 +21,7 @@ ddb_client = boto3.client('dynamodb', region_name=AWS_REGION)
 
 def write2ddb(date_searched, tc):
     table_name = TABLE_NAME
-    formatted_date = date_searched.strftime("%Y-%m-%d 00:00:00")
+    formatted_date = date_searched.strftime("%Y-%m-%d 00:00:00.000")
     item = {
         'pk': { 'S': formatted_date },
         'tc_date': { 'S': formatted_date },
@@ -83,6 +83,7 @@ def lambda_handler(event, context):
         driver.get(PATH_SCRAP_WEB)
         try_check = 0
         while (tc_contable == None) and ((date2search - date2search_iteration).days <= TAKEN_BACK_DAYS):
+            print('Date: ', date2search_iteration)
             try:
                 input_field = driver.find_element(By.NAME, 'ctl00$cphContent$rdpDate$dateInput')
                 input_field.clear()
@@ -95,7 +96,8 @@ def lambda_handler(event, context):
                 tc_contable = float(datos.text) if datos.text != '' else None
                 try_check = 0
                 date2search_iteration = date2search_iteration - timedelta(days=1)
-            except:
+            except Exception as e:
+                print('Error: ', e)
                 driver.get(PATH_SCRAP_WEB)
                 if try_check < 1: # 2 chances
                     try_check += 1

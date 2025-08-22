@@ -27,7 +27,7 @@ s3 = boto3.client(
 
 def generate_object_key(record_date):
 
-    date_obj = datetime.strptime(record_date, "%Y-%m-%d %H:%M:%S")
+    date_obj = datetime.strptime(record_date, "%Y-%m-%d %H:%M:%S.%f")
     formatted_date = date_obj.strftime("%Y%m%d")
     return f'{folder}/data_tc_{formatted_date}.csv'
 

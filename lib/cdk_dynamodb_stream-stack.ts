@@ -47,20 +47,20 @@ export class CdkDynamodbStreamStack extends cdk.Stack {
     commonRole.addToPolicy(kmsPolicy);
     commonRole.addToPolicy(stsPolicy);
 
-    const myTable = new Table(this, 'test-table', {
-      tableName: `${props.environment}-tc_contable`,
+    const myTable = new Table(this, `${props.environment}-dev-tc_contable`, {
+      tableName: `${props.environment}-dev-tc_contable`,
       partitionKey: { name: 'pk', type: AttributeType.STRING },
       sortKey: { name: 'tc_date', type: AttributeType.STRING },
       tableClass: TableClass.STANDARD_INFREQUENT_ACCESS,
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
       deletionProtection: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY
+      removalPolicy: cdk.RemovalPolicy.RETAIN
     });
     
-    const fnDocketScrapper = new DockerImageFunction(this, 'fnDocketScrapper', {
+    const fnDocketScrapper = new DockerImageFunction(this, `${props.environment}-dev-tc_scrapper`, {
       code: DockerImageCode.fromImageAsset('lambda/sbs_scrapper'),
-      functionName: `${props.environment}-dev-scrapper`,
+      functionName: `${props.environment}-dev-tc_scrapper`,
       memorySize: 512,
       timeout: cdk.Duration.seconds(30),
       environment: {
@@ -73,6 +73,7 @@ export class CdkDynamodbStreamStack extends cdk.Stack {
     myTable.grantWriteData(fnDocketScrapper);
 
     const eventFnDockerScrapper = new Rule(this, 'Rule', {
+      ruleName: `${props.environment}-dev-tc_scrapper_rule`,
       description: "Schedule a Lambda that creates a report every 1st of the month",
       schedule: Schedule.cron({
           year: "*",
@@ -84,8 +85,8 @@ export class CdkDynamodbStreamStack extends cdk.Stack {
       targets: [new LambdaFunction(fnDocketScrapper)],
     });
 
-    const fnNewItemHandler = new Function(this, 'fnNewItemHandler', {
-      functionName: 'fnNewItemHandler',
+    const fnNewItemHandler = new Function(this, `${props.environment}-dev-ddb_stream_handler`, {
+      functionName: `${props.environment}-dev-ddb_stream_handler`,
       runtime: Runtime.PYTHON_3_12,
       code: Code.fromAsset('lambda/new-item_handler'),
       handler: 'main.handler',
