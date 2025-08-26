@@ -5,6 +5,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from tempfile import mkdtemp
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import time
 import boto3
 from botocore.errorfactory import ClientError
@@ -65,45 +66,49 @@ def lambda_handler(event, context):
     )
 
     # Date to be searched
-    date2search = (datetime.now(timezone.utc) - timedelta(hours=5) - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tz = ZoneInfo("America/Lima")
+    now_lima = datetime.now(tz)
+    date2search = (now_lima - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     date2search_iteration = date2search
 
     # Validate if date was already requested
     tc_contable = None
-    print('hello')
-    # In case it is sunday, set null, no need to scrap the web
-    if date2search_iteration.weekday() == 6:
-        write2ddb(date2search, 0)
-        return get_message(200, date2search, tc_contable)
-    else:
-        # In case it is saturday, search the previus day, friday
-        if date2search_iteration.weekday() == 5: date2search_iteration = date2search_iteration - timedelta(days=1)
-        # Driver set up
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.get(PATH_SCRAP_WEB)
-        try_check = 0
-        while (tc_contable == None) and ((date2search - date2search_iteration).days <= TAKEN_BACK_DAYS):
-            print('Date: ', date2search_iteration)
-            try:
-                input_field = driver.find_element(By.NAME, 'ctl00$cphContent$rdpDate$dateInput')
-                input_field.clear()
-                input_field.send_keys(date2search_iteration.strftime('%d/%m/%Y'))
-                input_field.send_keys(Keys.RETURN)
+    
+    # In case it is saturday, search the previus day, friday
+    if date2search_iteration.weekday() >= 5:
+        date2search_iteration = date2search_iteration - timedelta(days=(date2search_iteration.weekday() % 4))
 
-                time.sleep(1.5) # Wait for data to be fetched
+    # Driver set up
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver.get(PATH_SCRAP_WEB)
+    try_check = 0
+    
+    while (tc_contable == None) and ((date2search - date2search_iteration).days <= TAKEN_BACK_DAYS):
+        time.sleep(4.5) # Wait to load the web
+        print('Date: ', date2search_iteration)
+        try:
+            input_field = driver.find_element(By.NAME, 'ctl00$cphContent$rdpDate$dateInput')
+            input_field.clear()
+            input_field.send_keys(date2search_iteration.strftime('%d/%m/%Y'))
+            input_field.send_keys(Keys.RETURN)
 
-                datos = driver.find_elements(By.CSS_SELECTOR, '.rgMultiHeaderRow > .rgHeader.APLI_fila2:last-child')[0]
-                tc_contable = float(datos.text) if datos.text != '' else None
+            time.sleep(2.5) # Wait for data to be fetched
+
+            datos = driver.find_elements(By.CSS_SELECTOR, '.rgMultiHeaderRow > .rgHeader.APLI_fila2:last-child')[0]
+
+            if datos.text != '':
+                tc_contable = float(datos.text)
+            else:
+                raise Exception("Datos without text")
+
+        except Exception as e:
+            print('Error: ', e)
+            driver.get(PATH_SCRAP_WEB)
+            if try_check < 3: # 2 chances
+                try_check += 1
+            else:
                 try_check = 0
                 date2search_iteration = date2search_iteration - timedelta(days=1)
-            except Exception as e:
-                print('Error: ', e)
-                driver.get(PATH_SCRAP_WEB)
-                if try_check < 1: # 2 chances
-                    try_check += 1
-                else:
-                    try_check = 0
-                    date2search_iteration = date2search_iteration - timedelta(days=1)
 
         driver.close()
         if (tc_contable == None):
